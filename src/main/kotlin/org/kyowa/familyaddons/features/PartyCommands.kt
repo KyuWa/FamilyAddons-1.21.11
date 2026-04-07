@@ -3,7 +3,6 @@ package org.kyowa.familyaddons.features
 import org.kyowa.familyaddons.COLOR_CODE_REGEX
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents
 import net.minecraft.client.MinecraftClient
-import org.kyowa.familyaddons.FamilyAddons
 import org.kyowa.familyaddons.config.FamilyConfigManager
 import org.kyowa.familyaddons.party.PartyTracker
 import org.kyowa.familyaddons.util.MathEval
@@ -25,8 +24,6 @@ object PartyCommands {
         ClientReceiveMessageEvents.ALLOW_GAME.register { message, _ ->
             if (FamilyConfigManager.config.party.commandsEnabled) {
                 val plain = message.string.replace(COLOR_CODE_REGEX, "").trim()
-                if (plain.contains("Party")) {
-                }
                 handlePartyMessage(plain)
             }
             true
@@ -36,21 +33,14 @@ object PartyCommands {
     private fun selfName() = MinecraftClient.getInstance().player?.name?.string ?: ""
 
     private fun send(cmd: String) {
-        val player = MinecraftClient.getInstance().player ?: return
-        player.networkHandler.sendChatCommand(cmd)
+        MinecraftClient.getInstance().player?.networkHandler?.sendChatCommand(cmd)
     }
 
     private fun handlePartyMessage(plain: String) {
         if (!plain.startsWith("Party")) return
-
-        val match = PARTY_MSG_REGEX.find(plain)
-        if (match == null) {
-            return
-        }
-
+        val match = PARTY_MSG_REGEX.find(plain) ?: return
         val sender = PartyTracker.cleanName(match.groupValues[1])
         val body = match.groupValues[2].trim().trimStart('!', '.')
-
         if (sender.isEmpty()) return
         if (!isWhitelisted(sender)) return
         val cfg = FamilyConfigManager.config.party
@@ -87,7 +77,7 @@ object PartyCommands {
             }
         }
 
-        if (FamilyConfigManager.config.party.calcEnabled) {
+        if (cfg.calcEnabled) {
             CALC_REGEX.find(body)?.let {
                 val expr = it.groupValues[1].trim()
                 val result = MathEval.evaluate(expr) ?: return
@@ -100,24 +90,41 @@ object PartyCommands {
     }
 
     private fun doTransfer(sender: String, rawTarget: String?) {
-        send("p list")
-        scheduler.schedule({
-            val self = selfName()
-            val target = rawTarget?.let { PartyTracker.resolveMember(it, true, self) ?: it } ?: sender
-            MinecraftClient.getInstance().execute { send("p transfer $target") }
-        }, 500, TimeUnit.MILLISECONDS)
+        val self = selfName()
+        val target = rawTarget?.let { q ->
+            // Try cached members first
+            PartyTracker.resolveMember(q, true, self) ?: run {
+                // Fall back to /p list then resolve
+                send("p list")
+                scheduler.schedule({
+                    val resolved = PartyTracker.resolveMember(q, true, self) ?: q
+                    MinecraftClient.getInstance().execute { send("p transfer $resolved") }
+                }, 600, TimeUnit.MILLISECONDS)
+                return
+            }
+        } ?: sender
+        send("p transfer $target")
     }
 
     private fun doKick(rawTarget: String) {
         val self = selfName()
         if (rawTarget.equals(self, ignoreCase = true)) return
+
+        // Try cached members first
+        val resolved = PartyTracker.resolveMember(rawTarget, false, self)
+        if (resolved != null) {
+            if (!resolved.equals(self, ignoreCase = true)) send("p kick $resolved")
+            return
+        }
+
+        // Fall back to /p list
         send("p list")
         scheduler.schedule({
-            val resolved = PartyTracker.resolveMember(rawTarget, false, self) ?: rawTarget
-            if (!resolved.equals(self, ignoreCase = true)) {
-                MinecraftClient.getInstance().execute { send("p kick $resolved") }
+            val fallback = PartyTracker.resolveMember(rawTarget, false, self) ?: rawTarget
+            if (!fallback.equals(self, ignoreCase = true)) {
+                MinecraftClient.getInstance().execute { send("p kick $fallback") }
             }
-        }, 500, TimeUnit.MILLISECONDS)
+        }, 600, TimeUnit.MILLISECONDS)
     }
 
     private fun isWhitelisted(name: String): Boolean {

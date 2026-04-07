@@ -1,9 +1,7 @@
 package org.kyowa.familyaddons.config
 
 import com.google.gson.annotations.Expose
-import io.github.notenoughupdates.moulconfig.annotations.ConfigEditorBoolean
-import io.github.notenoughupdates.moulconfig.annotations.ConfigEditorDropdown
-import io.github.notenoughupdates.moulconfig.annotations.ConfigOption
+import io.github.notenoughupdates.moulconfig.annotations.*
 
 class MineshaftConfig {
     @Expose @JvmField
@@ -20,4 +18,20 @@ class MineshaftConfig {
     @ConfigOption(name = "Corpse Announce", desc = "Announce corpse types to party chat when entering a mineshaft.")
     @ConfigEditorBoolean
     var corpseAnnounce = true
+
+    @Expose @JvmField
+    @ConfigOption(name = "Pickobulus Timer", desc = "Show a HUD timer after using Pickobulus.")
+    @ConfigEditorBoolean
+    var pickobulusTimer = true
+
+    @Expose @JvmField
+    @ConfigOption(name = "Pickobulus HUD Scale", desc = "Scale of the Pickobulus timer HUD (e.g. 1.5).")
+    @ConfigEditorText
+    var pickobulusHudScale = "1.5"
+
+    @Expose @JvmField
+    var pickobulusHudX = -1
+
+    @Expose @JvmField
+    var pickobulusHudY = -1
 }

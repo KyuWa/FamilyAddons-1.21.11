@@ -49,6 +49,7 @@ object FamilyAddons : ClientModInitializer {
         NpcLocations.register()
         Parkour.register()
         EntityHighlight.register()
+        PickaxeAbility.register()
 
         // One-off join event
         ClientPlayConnectionEvents.JOIN.register { _, _, _ ->
