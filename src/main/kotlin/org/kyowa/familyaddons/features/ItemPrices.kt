@@ -26,8 +26,8 @@ object ItemPrices {
     private val http = HttpClient.newHttpClient()
     private val lowestBin = mutableMapOf<String, Double>()
 
+    // Expose for PetValueCommand
     fun getLowestBin(): Map<String, Double> = synchronized(lowestBin) { lowestBin.toMap() }
-
     private val avgBin = mutableMapOf<String, Double>()
     private val bazaar = mutableMapOf<String, BazaarData>()
     private var lastBinFetch = 0L
@@ -56,15 +56,19 @@ object ItemPrices {
             if (!FamilyConfigManager.config.utilities.itemPrices) return@register
             val id = getSkyblockId(stack) ?: return@register
 
-            // ── Pet ───────────────────────────────────────────────────
+            // Pet handling
             if (id.startsWith("PET:")) {
                 val parts = id.split(":")
-                val type = parts[1]; val rarity = parts[2]
+                val type = parts[1]
+                val rarity = parts[2]
+
                 val keyLvl1 = "$type;$rarity"
                 val maxKey = if (type in LVL200_PETS) "$type;$rarity+200" else "$type;$rarity+100"
                 val maxLabel = if (type in LVL200_PETS) "LBIN Lvl 200: " else "LBIN Lvl 100: "
+
                 val priceLvl1 = synchronized(lowestBin) { lowestBin[keyLvl1] }
                 val priceMax = synchronized(lowestBin) { lowestBin[maxKey] }
+
                 if (priceLvl1 != null || priceMax != null) {
                     tooltip.add(Text.empty())
                     if (priceLvl1 != null) tooltip.add(labelLine("LBIN Lvl 1: ", priceLvl1))
@@ -73,45 +77,45 @@ object ItemPrices {
                 return@register
             }
 
-            // ── Enchanted book ────────────────────────────────────────
+            // Enchanted book handling
             if (id.startsWith("ENCHBOOK:")) {
                 val parts = id.split(":")
                 val enchName = parts[1]; val level = parts[2]
-                val binKey = "ENCHANTED_BOOK;$enchName;$level"
-                val price = synchronized(lowestBin) { lowestBin[binKey] }
-                val avg = synchronized(avgBin) { avgBin[binKey] }
-                if (price != null || avg != null) {
+                // Hypixel Bazaar key format: "ENCHANTMENT_ENCHNAME_LEVEL"
+                val bazKey = "ENCHANTMENT_${enchName.uppercase()}_$level"
+                val baz = synchronized(bazaar) { bazaar[bazKey] }
+                if (baz != null) {
                     tooltip.add(Text.empty())
-                    if (price != null) tooltip.add(labelLine("LBIN: ", price))
-                    if (avg != null) tooltip.add(labelLine("AVG LBIN: ", avg))
+                    tooltip.add(labelLine("Bazaar Insta-Sell: ", baz.instaSell))
+                    tooltip.add(labelLine("Bazaar Insta-Buy: ", baz.instaBuy))
                 }
                 return@register
             }
 
-            // ── Bazaar ────────────────────────────────────────────────
+            // Bazaar handling
             val baz = synchronized(bazaar) { bazaar[id] }
             if (baz != null) {
+                val count = stack.count
+                val maxStack = stack.maxCount
                 tooltip.add(Text.empty())
-                tooltip.add(labelLine("Bazaar Insta-Sell: ", baz.instaSell))
-                tooltip.add(labelLine("Bazaar Insta-Buy: ", baz.instaBuy))
                 if (isShiftDown()) {
-                    val count = stack.count
-                    tooltip.add(Text.empty())
                     if (count > 1) {
-                        tooltip.add(labelLine("Sell Total (×$count): ", baz.instaSell * count))
-                        tooltip.add(labelLine("Buy Total (×$count): ", baz.instaBuy * count))
+                        tooltip.add(labelLine("Insta-Sell (×$count): ", baz.instaSell * count))
+                        tooltip.add(labelLine("Insta-Buy (×$count): ", baz.instaBuy * count))
                     } else {
-                        tooltip.add(labelLine("Sell Stack (×64): ", baz.instaSell * 64))
-                        tooltip.add(labelLine("Buy Stack (×64): ", baz.instaBuy * 64))
+                        tooltip.add(labelLine("Insta-Sell (×$maxStack): ", baz.instaSell * maxStack))
+                        tooltip.add(labelLine("Insta-Buy (×$maxStack): ", baz.instaBuy * maxStack))
                     }
                 } else {
-                    tooltip.add(Text.literal("§7Hold §eShift §7for stack price")
-                        .setStyle(Style.EMPTY.withItalic(true)))
+                    tooltip.add(labelLine("Bazaar Insta-Sell: ", baz.instaSell))
+                    tooltip.add(labelLine("Bazaar Insta-Buy: ", baz.instaBuy))
+                    val hint = if (count > 1) "§7Hold §eShift §7for sell total (×$count)"
+                    else "§7Hold §eShift §7for stack price (×$maxStack)"
+                    tooltip.add(Text.literal(hint).setStyle(Style.EMPTY.withItalic(true)))
                 }
                 return@register
             }
 
-            // ── AH / BIN ──────────────────────────────────────────────
             val bin = synchronized(lowestBin) { lowestBin[id] }
             val avg = synchronized(avgBin) { avgBin[id] }
             if (bin != null) {
@@ -134,7 +138,6 @@ object ItemPrices {
                 ?: nbt.getCompoundOrEmpty("tag").getCompoundOrEmpty("ExtraAttributes").getString("id").orElse(null)?.ifBlank { null }
                 ?: return null
 
-        // Pet
         if (rawId == "PET") {
             val petInfoStr =
                 nbt.getString("petInfo").orElse(null)?.ifBlank { null }
@@ -152,10 +155,10 @@ object ItemPrices {
 
         // Enchanted book — read first enchantment from ExtraAttributes.enchantments
         if (rawId == "ENCHANTED_BOOK") {
-            val extraAttribs =
-                nbt.getCompoundOrEmpty("ExtraAttributes").takeIf { !it.isEmpty }
-                    ?: nbt.getCompoundOrEmpty("tag").getCompoundOrEmpty("ExtraAttributes")
-            val enchNbt = extraAttribs.getCompoundOrEmpty("enchantments")
+            val enchNbt =
+                nbt.getCompoundOrEmpty("enchantments").takeIf { !it.isEmpty }
+                    ?: nbt.getCompoundOrEmpty("ExtraAttributes").getCompoundOrEmpty("enchantments").takeIf { !it.isEmpty }
+                    ?: nbt.getCompoundOrEmpty("tag").getCompoundOrEmpty("ExtraAttributes").getCompoundOrEmpty("enchantments")
             if (!enchNbt.isEmpty) {
                 val firstKey = enchNbt.keys.firstOrNull()
                 if (firstKey != null) {
