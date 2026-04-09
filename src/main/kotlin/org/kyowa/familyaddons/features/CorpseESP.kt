@@ -5,21 +5,26 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.minecraft.client.MinecraftClient
-import net.minecraft.client.util.math.MatrixStack
+import net.minecraft.client.render.VertexConsumer
 import net.minecraft.client.render.VertexConsumerProvider
-import net.minecraft.util.math.Vec3d
+import net.minecraft.client.util.math.MatrixStack
 import net.minecraft.entity.decoration.ArmorStandEntity
 import net.minecraft.entity.EquipmentSlot
+import net.minecraft.util.math.Vec3d
 import org.kyowa.familyaddons.config.FamilyConfigManager
 
 object CorpseESP {
 
-    data class Corpse(val x: Double, val y: Double, val z: Double, val label: String, val r: Float, val g: Float, val b: Float)
+    data class Corpse(
+        val x: Double, val y: Double, val z: Double,
+        val label: String,
+        val r: Float, val g: Float, val b: Float,
+        var looted: Boolean = false
+    )
 
     val cachedCorpses = mutableListOf<Corpse>()
-    private val claimed = mutableListOf<Triple<Double, Double, Double>>()
 
-    private val CORPSE_ENTRY_REGEX = Regex("""^(\w+):\s*(LOOTED|NOT LOOTED)$""")
+    private val LOOT_MESSAGE_REGEX = Regex("""^\s*(.+?)\s+CORPSE LOOT!\s*$""")
 
     data class HelmetInfo(val label: String, val r: Float, val g: Float, val b: Float)
 
@@ -31,38 +36,17 @@ object CorpseESP {
     )
 
     private var lastArea: String? = null
-    private var hasAnnounced = false
-    private var announceCheckTick = 0
     private var inMineshaft = false
 
-    private fun getFrozenCorpses(): List<Pair<String, Boolean>>? {
-        val tabList = MinecraftClient.getInstance().networkHandler?.playerList ?: return null
-        val corpses = mutableListOf<Pair<String, Boolean>>()
-        var inCorpseSection = false
+    fun hasCachedCorpses(): Boolean = cachedCorpses.any { !it.looted }
 
-        for (entry in tabList) {
-            val raw = entry.displayName?.string?.replace(COLOR_CODE_REGEX, "")?.trim() ?: continue
-            if (raw.isEmpty()) continue
-            if (raw == "Frozen Corpses:") { inCorpseSection = true; continue }
-            if (inCorpseSection) {
-                if (raw.endsWith(":") && !raw.contains("LOOTED") && !raw.contains("NOT LOOTED")) break
-                val match = CORPSE_ENTRY_REGEX.find(raw) ?: continue
-                corpses.add(match.groupValues[1] to (match.groupValues[2] == "LOOTED"))
-            }
-        }
-        return if (corpses.isNotEmpty()) corpses else null
-    }
-
-    fun hasCachedCorpses(): Boolean = cachedCorpses.isNotEmpty()
-
-    // Returns ARGB color for outline mode, 0 if not a corpse or wrong mode
     fun getOutlineColor(entity: net.minecraft.entity.Entity): Int {
-        val config = FamilyConfigManager.config.mineshaft
+        val config = FamilyConfigManager.config.mining
         if (!config.corpseESP) return 0
         if (config.corpseDrawingStyle != 1) return 0
         val ex = entity.x; val ey = entity.y; val ez = entity.z
         val corpse = cachedCorpses.firstOrNull { c ->
-            Math.abs(c.x - ex) < 1.5 && Math.abs(c.y - ey) < 1.5 && Math.abs(c.z - ez) < 1.5
+            !c.looted && Math.abs(c.x - ex) < 1.5 && Math.abs(c.y - ey) < 1.5 && Math.abs(c.z - ez) < 1.5
         } ?: return 0
         val r = (corpse.r * 255).toInt()
         val g = (corpse.g * 255).toInt()
@@ -70,16 +54,9 @@ object CorpseESP {
         return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
     }
 
-    fun debugTabList(): String {
-        val tabList = MinecraftClient.getInstance().networkHandler?.playerList ?: return "no tab list"
-        return tabList.mapNotNull { it.displayName?.string?.replace(COLOR_CODE_REGEX, "")?.trim() }
-            .filter { it.isNotEmpty() }.joinToString(" | ")
-    }
-
     fun register() {
         var areaCheckTick = 0
         ClientTickEvents.END_CLIENT_TICK.register { client ->
-            val player = client.player ?: return@register
             var currentArea = lastArea
             if (areaCheckTick++ % 10 == 0) {
                 val tabList = client.networkHandler?.playerList ?: return@register
@@ -92,32 +69,16 @@ object CorpseESP {
             if (currentArea != lastArea) {
                 lastArea = currentArea
                 if (currentArea == "Mineshaft") {
-                    inMineshaft = true; hasAnnounced = false; announceCheckTick = 0; cachedCorpses.clear()
+                    inMineshaft = true; cachedCorpses.clear()
                 } else {
-                    inMineshaft = false; hasAnnounced = false; announceCheckTick = 0
+                    inMineshaft = false
                 }
             }
-            if (!FamilyConfigManager.config.mineshaft.corpseAnnounce) return@register
-            if (!inMineshaft || hasAnnounced) return@register
-            announceCheckTick++
-            if (announceCheckTick < 100) return@register
-            if (announceCheckTick != 100 && (announceCheckTick - 100) % 20 != 0) return@register
-            val corpses = getFrozenCorpses() ?: return@register
-            val lapisCount = corpses.count { it.first == "Lapis" }
-            val hasVanguard = corpses.any { it.first == "Vanguard" }
-            if (lapisCount == 0 && !hasVanguard) return@register
-            hasAnnounced = true
-            val msg = when {
-                hasVanguard && lapisCount == 0 -> "/pc Vanguard Mineshaft"
-                hasVanguard -> "/pc Vanguard Mineshaft | Corpses: ${lapisCount}x Lapis"
-                else -> "/pc Corpses: ${lapisCount}x Lapis"
-            }
-            player.networkHandler.sendChatMessage(msg)
         }
 
         var scanTick = 0
         ClientTickEvents.END_CLIENT_TICK.register { client ->
-            if (!FamilyConfigManager.config.mineshaft.corpseESP) return@register
+            if (!FamilyConfigManager.config.mining.corpseESP) return@register
             if (!inMineshaft) return@register
             val world = client.world ?: return@register
             if (scanTick++ % 10 != 0) return@register
@@ -125,9 +86,6 @@ object CorpseESP {
                 if (entity !is ArmorStandEntity) continue
                 if (entity.isInvisible) continue
                 val ex = entity.x; val ey = entity.y; val ez = entity.z
-                if (claimed.any { (cx, cy, cz) ->
-                        Math.abs(cx - ex) < 2 && Math.abs(cy - ey) < 2 && Math.abs(cz - ez) < 2
-                    }) continue
                 val helmet = entity.getEquippedStack(EquipmentSlot.HEAD)
                 if (helmet.isEmpty) continue
                 val helmetName = helmet.name.string.replace(COLOR_CODE_REGEX, "").trim()
@@ -142,18 +100,17 @@ object CorpseESP {
 
         ClientReceiveMessageEvents.ALLOW_GAME.register { message, _ ->
             val plain = message.string.replace(COLOR_CODE_REGEX, "").trim()
-            val match = Regex("""^\s*(.+?)\s+CORPSE LOOT!\s*$""").find(plain)
+            val match = LOOT_MESSAGE_REGEX.find(plain)
             if (match != null) {
                 val corpseName = match.groupValues[1].trim()
                 val client = MinecraftClient.getInstance()
                 val player = client.player ?: return@register true
                 val px = player.x; val py = player.y; val pz = player.z
-                cachedCorpses.removeIf { c ->
-                    Math.abs(c.x - px) < 5 && Math.abs(c.y - py) < 5 && Math.abs(c.z - pz) < 5 &&
-                            c.label.equals(corpseName, ignoreCase = true)
-                }
-                claimed.add(Triple(px, py, pz))
-                if (FamilyConfigManager.config.mineshaft.corpseAnnounce) {
+                cachedCorpses
+                    .filter { !it.looted && it.label.equals(corpseName, ignoreCase = true) }
+                    .minByOrNull { c -> val dx = c.x-px; val dy = c.y-py; val dz = c.z-pz; dx*dx+dy*dy+dz*dz }
+                    ?.let { it.looted = true }
+                if (FamilyConfigManager.config.mining.corpseAnnounce) {
                     val fx = px.toInt(); val fy = py.toInt(); val fz = pz.toInt()
                     client.execute { player.networkHandler.sendChatMessage("/pc x: $fx, y: $fy, z: $fz | ($corpseName Corpse)") }
                 }
@@ -161,48 +118,49 @@ object CorpseESP {
             true
         }
 
-        ClientPlayConnectionEvents.DISCONNECT.register { _, _ -> cachedCorpses.clear(); claimed.clear() }
+        ClientPlayConnectionEvents.DISCONNECT.register { _, _ -> cachedCorpses.clear() }
         ClientPlayConnectionEvents.JOIN.register { _, _, _ ->
-            cachedCorpses.clear(); claimed.clear()
-            lastArea = null; hasAnnounced = false; announceCheckTick = 0; inMineshaft = false
+            cachedCorpses.clear(); lastArea = null; inMineshaft = false
         }
     }
 
     fun onWorldRender(matrices: MatrixStack, consumers: VertexConsumerProvider, cam: Vec3d) {
-        if (!FamilyConfigManager.config.mineshaft.corpseESP) return
-        if (cachedCorpses.isEmpty()) return
-        // Skip box rendering if outline mode
-        if (FamilyConfigManager.config.mineshaft.corpseDrawingStyle == 1) return
+        if (!FamilyConfigManager.config.mining.corpseESP) return
+        val visible = cachedCorpses.filter { !it.looted }
+        if (visible.isEmpty()) return
+        if (FamilyConfigManager.config.mining.corpseDrawingStyle == 1) return
 
-        fun drawCorpses(alpha: Float, renderType: net.minecraft.client.render.RenderLayer) {
+        val entry = matrices.peek()
+
+        fun draw(alpha: Float, renderType: net.minecraft.client.render.RenderLayer) {
             val buf = consumers.getBuffer(renderType)
-            val entry = matrices.peek()
-            for (corp in cachedCorpses) {
+            for (c in visible) {
                 drawBoxEdges(buf, entry,
-                    (corp.x - 0.5 - cam.x).toFloat(), (corp.y - cam.y).toFloat(), (corp.z - 0.5 - cam.z).toFloat(),
-                    (corp.x + 0.5 - cam.x).toFloat(), (corp.y + 2.0 - cam.y).toFloat(), (corp.z + 0.5 - cam.z).toFloat(),
-                    corp.r, corp.g, corp.b, alpha)
+                    (c.x - 0.5 - cam.x).toFloat(), (c.y - cam.y).toFloat(), (c.z - 0.5 - cam.z).toFloat(),
+                    (c.x + 0.5 - cam.x).toFloat(), (c.y + 2.0 - cam.y).toFloat(), (c.z + 0.5 - cam.z).toFloat(),
+                    c.r, c.g, c.b, alpha)
             }
         }
 
-        drawCorpses(1.0f, FamilyRenderTypes.LINES)
-        drawCorpses(1.0f, FamilyRenderTypes.LINES_NO_DEPTH)
+        draw(1.0f, FamilyRenderTypes.LINES)
+        draw(0.3f, FamilyRenderTypes.LINES_NO_DEPTH)
 
-        for (c in cachedCorpses) {
+        // Labels
+        for (c in visible) {
             val dx = c.x - cam.x; val dy = c.y - cam.y; val dz = c.z - cam.z
-            val dist = Math.sqrt(dx * dx + dy * dy + dz * dz).toInt()
-            renderLabel(matrices, consumers, cam, c.x, c.y + 2.2, c.z, "§f${c.label} §7(${dist}m)", c.r, c.g, c.b)
+            val dist = Math.sqrt(dx*dx + dy*dy + dz*dz).toInt()
+            renderLabel(matrices, consumers, cam, c.x, c.y + 2.2, c.z, "§f${c.label} §7(${dist}m)")
         }
     }
 
     private fun renderLabel(
         matrices: MatrixStack, consumers: VertexConsumerProvider, cam: Vec3d,
-        x: Double, y: Double, z: Double, text: String, r: Float, g: Float, b: Float
+        x: Double, y: Double, z: Double, text: String
     ) {
         val client = MinecraftClient.getInstance()
         matrices.push()
         matrices.translate(x - cam.x, y - cam.y, z - cam.z)
-        matrices.multiply(MinecraftClient.getInstance().gameRenderer.camera.getRotation())
+        matrices.multiply(client.gameRenderer.camera.rotation)
         val scale = 0.025f
         matrices.scale(-scale, -scale, scale)
         val tr = client.textRenderer
@@ -213,9 +171,10 @@ object CorpseESP {
     }
 
     internal fun drawBoxEdges(
-        buf: net.minecraft.client.render.VertexConsumer,
+        buf: VertexConsumer,
         entry: net.minecraft.client.util.math.MatrixStack.Entry,
-        x1: Float, y1: Float, z1: Float, x2: Float, y2: Float, z2: Float,
+        x1: Float, y1: Float, z1: Float,
+        x2: Float, y2: Float, z2: Float,
         r: Float, g: Float, b: Float, a: Float
     ) {
         val edges = arrayOf(

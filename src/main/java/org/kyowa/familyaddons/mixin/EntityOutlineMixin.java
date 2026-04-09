@@ -11,13 +11,21 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(EntityRenderer.class)
-public class EntityRendererMixin {
+public class EntityOutlineMixin<T extends Entity, S extends EntityRenderState> {
 
     @Inject(method = "updateRenderState", at = @At("RETURN"))
-    private void fa_updateRenderState(Entity entity, EntityRenderState state, float tickProgress, CallbackInfo ci) {
-        int corpseColor = CorpseESP.INSTANCE.getOutlineColor(entity);
-        if (corpseColor != 0) { state.outlineColor = corpseColor; return; }
+    private void onUpdateRenderState(T entity, S state, float tickProgress, CallbackInfo ci) {
+        // EntityHighlight takes priority
         int highlightColor = EntityHighlight.INSTANCE.getOutlineColor(entity);
-        if (highlightColor != 0) { state.outlineColor = highlightColor; }
+        if (highlightColor != 0) {
+            state.outlineColor = highlightColor;
+            return;
+        }
+
+        // CorpseESP outline
+        int corpseColor = CorpseESP.INSTANCE.getOutlineColor(entity);
+        if (corpseColor != 0) {
+            state.outlineColor = corpseColor;
+        }
     }
 }

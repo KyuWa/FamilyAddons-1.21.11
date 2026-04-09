@@ -3,12 +3,13 @@ package org.kyowa.familyaddons.features
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.minecraft.client.MinecraftClient
-import net.minecraft.client.util.math.MatrixStack
+import net.minecraft.client.render.VertexConsumer
 import net.minecraft.client.render.VertexConsumerProvider
-import net.minecraft.util.math.Vec3d
+import net.minecraft.client.util.math.MatrixStack
 import net.minecraft.entity.Entity
 import net.minecraft.entity.LivingEntity
 import net.minecraft.entity.decoration.ArmorStandEntity
+import net.minecraft.util.math.Vec3d
 import org.kyowa.familyaddons.COLOR_CODE_REGEX
 import org.kyowa.familyaddons.config.FamilyConfigManager
 
@@ -37,12 +38,11 @@ object EntityHighlight {
             val candidates = world.getEntitiesByClass(
                 LivingEntity::class.java, entity.boundingBox.expand(0.5, 1.5, 0.5)
             ) { it !is ArmorStandEntity && it != player && it.isAlive }
-            return candidates.minByOrNull { val dx = it.x - entity.x; val dz = it.z - entity.z; dx * dx + dz * dz }
+            return candidates.minByOrNull { val dx = it.x - entity.x; val dz = it.z - entity.z; dx*dx + dz*dz }
         }
         return entity
     }
 
-    // Returns ARGB color for outline mode, 0 if not highlighted or wrong mode
     fun getOutlineColor(entity: Entity): Int {
         val config = FamilyConfigManager.config.highlight
         if (!config.enabled) return 0
@@ -82,10 +82,9 @@ object EntityHighlight {
     }
 
     fun onWorldRender(matrices: MatrixStack, consumers: VertexConsumerProvider, cam: Vec3d) {
-        if (highlighted.isEmpty()) return
         val config = FamilyConfigManager.config.highlight
         if (!config.enabled) return
-        // Skip box rendering if outline mode
+        if (highlighted.isEmpty()) return
         if (config.drawingStyle == 1) return
 
         val (r, g, b) = try {
@@ -109,15 +108,16 @@ object EntityHighlight {
         }
 
         drawAll(1.0f, FamilyRenderTypes.LINES)
-        if (config.throughWalls) drawAll(1.0f, FamilyRenderTypes.LINES_NO_DEPTH)
+        drawAll(0.3f, FamilyRenderTypes.LINES_NO_DEPTH)
     }
 
     fun hasHighlighted() = highlighted.isNotEmpty() && FamilyConfigManager.config.highlight.enabled
 
     internal fun drawBoxEdges(
-        buf: net.minecraft.client.render.VertexConsumer,
+        buf: VertexConsumer,
         entry: net.minecraft.client.util.math.MatrixStack.Entry,
-        x1: Float, y1: Float, z1: Float, x2: Float, y2: Float, z2: Float,
+        x1: Float, y1: Float, z1: Float,
+        x2: Float, y2: Float, z2: Float,
         r: Float, g: Float, b: Float, a: Float
     ) {
         val edges = arrayOf(

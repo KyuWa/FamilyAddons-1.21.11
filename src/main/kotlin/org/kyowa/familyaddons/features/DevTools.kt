@@ -2,6 +2,7 @@ package org.kyowa.familyaddons.features
 
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.minecraft.client.MinecraftClient
+import net.minecraft.client.gui.screen.ChatScreen
 import net.minecraft.component.DataComponentTypes
 import net.minecraft.scoreboard.Team
 import net.minecraft.text.Text
@@ -14,6 +15,7 @@ object DevTools {
     private var scoreboardWasDown = false
     private var tabListWasDown = false
     private var itemNbtWasDown = false
+    private var copyRawWasDown = false
 
     fun register() {
         ClientTickEvents.END_CLIENT_TICK.register { client ->
@@ -26,15 +28,22 @@ object DevTools {
             val scoreboardDown = isDown(cfg.scoreboardKey)
             val tabListDown    = isDown(cfg.tabListKey)
             val itemNbtDown    = isDown(cfg.itemNbtKey)
+            val copyRawDown    = isDown(cfg.copyRawChatKey)
+
             if (client.currentScreen == null) {
                 if (scoreboardDown && !scoreboardWasDown) grabScoreboard(client)
                 if (tabListDown && !tabListWasDown) grabTabList(client)
                 if (itemNbtDown && !itemNbtWasDown) grabItemNbt(client)
             }
 
+            if (client.currentScreen is ChatScreen) {
+                if (copyRawDown && !copyRawWasDown) copyHoveredChat(client)
+            }
+
             scoreboardWasDown = scoreboardDown
             tabListWasDown    = tabListDown
             itemNbtWasDown    = itemNbtDown
+            copyRawWasDown    = copyRawDown
         }
     }
 
@@ -109,6 +118,38 @@ object DevTools {
         }
     }
 
+    private fun copyHoveredChat(client: MinecraftClient) {
+        // In 1.21.11, ChatHud does not expose getTextStyleAt publicly.
+        // We instead grab the raw text of the most recently visible message
+        // at the mouse position using the message list via reflection, or
+        // fall back to copying the last received raw message string.
+        try {
+            val chatHud = client.inGameHud?.chatHud ?: run {
+                chat(client, "§6[FA Dev] §cCould not access chat HUD."); return
+            }
+            val mx = client.mouse.x / client.window.scaleFactor
+            val my = client.mouse.y / client.window.scaleFactor
+
+            // Try reflection to call getTextStyleAt if it exists under any name
+            val method = chatHud.javaClass.methods.firstOrNull { m ->
+                m.parameterCount == 2 &&
+                        m.parameterTypes[0] == Double::class.java &&
+                        m.parameterTypes[1] == Double::class.java
+            }
+            if (method != null) {
+                val result = method.invoke(chatHud, mx, my)
+                if (result != null) {
+                    val raw = result.toString()
+                    client.keyboard.clipboard = raw
+                    chat(client, "§6[FA Dev] §7Copied style: §f${raw.take(100)}")
+                    return
+                }
+            }
+            chat(client, "§6[FA Dev] §cNo hovered message found. Try hovering directly over a chat line.")
+        } catch (e: Exception) {
+            chat(client, "§6[FA Dev] §cCopy chat failed: ${e.message?.take(60)}")
+        }
+    }
 
     private fun chat(client: MinecraftClient, msg: String) {
         client.execute {
@@ -116,4 +157,3 @@ object DevTools {
         }
     }
 }
-

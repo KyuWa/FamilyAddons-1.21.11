@@ -3,11 +3,16 @@
   "package": "org.kyowa.familyaddons.mixin",
   "compatibilityLevel": "JAVA_21",
   "refmap": "familyaddons.refmap.json",
-  "mixins": [],
+  "mixins": [
+    "EntityRefMixin"
+  ],
   "client": [
     "WorldRendererMixin",
     "SignEditMixin",
-    "EntityRendererMixin"
+    "EntityOutlineMixin",
+    "EntityCaptureMixin",
+    "PlayerDisguiseMixin",
+    "HotbarScrollMixin"
   ],
   "injectors": {
     "defaultRequire": 1

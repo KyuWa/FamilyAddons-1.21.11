@@ -26,8 +26,8 @@ class FamilyConfig : Config() {
     var party = PartyConfig()
 
     @Expose @JvmField
-    @Category(name = "Mineshaft", desc = "Mineshaft features")
-    var mineshaft = MineshaftConfig()
+    @Category(name = "Mining", desc = "Mining features — Mineshaft & Pickaxe Ability")
+    var mining = MiningConfig()
 
     @Expose @JvmField
     @Category(name = "Kuudra", desc = "Kuudra features")
@@ -52,6 +52,10 @@ class FamilyConfig : Config() {
     @Expose @JvmField
     @Category(name = "Keybinds", desc = "GFS keybinds for quick item restocking")
     var keybinds = KeybindsConfig()
+
+    @Expose @JvmField
+    @Category(name = "Player Disguise", desc = "Replace player renders with a mob model")
+    var playerDisguise = PlayerDisguiseConfig()
 
     @Expose @JvmField
     @Category(name = "Dev", desc = "Developer debug tools")

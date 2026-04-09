@@ -3,15 +3,12 @@ package org.kyowa.familyaddons
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext
 import net.minecraft.client.MinecraftClient
 import net.minecraft.client.gui.screen.Screen
-import net.minecraft.client.render.VertexConsumerProvider
+import org.kyowa.familyaddons.commands.ParkourCommand
 import org.kyowa.familyaddons.commands.TestCommand
 import org.kyowa.familyaddons.config.FamilyConfigManager
 import org.kyowa.familyaddons.features.*
-import org.kyowa.familyaddons.commands.ParkourCommand
 import org.kyowa.familyaddons.party.PartyTracker
 import org.slf4j.LoggerFactory
 
@@ -21,6 +18,9 @@ object FamilyAddons : ClientModInitializer {
 
     val LOGGER = LoggerFactory.getLogger("FamilyAddons")
     const val VERSION = "1.0.0"
+
+    private var hudEditorMouseWasDown = false
+    private var previousScreen: Screen? = null
 
     override fun onInitializeClient() {
         LOGGER.info("FamilyAddons $VERSION loading...")
@@ -48,41 +48,26 @@ object FamilyAddons : ClientModInitializer {
         Waypoints.register()
         NpcLocations.register()
         Parkour.register()
+        ParkourCommand.register()
         EntityHighlight.register()
         PickaxeAbility.register()
 
-        // One-off join event
-        ClientPlayConnectionEvents.JOIN.register { _, _, _ ->
-            EntityHighlight.rescan()
-        }
-
-        WorldRenderEvents.AFTER_ENTITIES.register { ctx: WorldRenderContext ->
-            val matrices  = ctx.matrices()
-            val cam       = MinecraftClient.getInstance().gameRenderer.camera.getCameraPos()
-            val consumers = ctx.consumers() ?: return@register
-
-            Waypoints.onWorldRender(matrices, consumers, cam)
-            CorpseESP.onWorldRender(matrices, consumers, cam)
-            NpcLocations.onWorldRender(matrices, consumers, cam)
-            Parkour.onWorldRender(matrices, consumers, cam)
-            EntityHighlight.onWorldRender(matrices, consumers, cam)
-
-            (consumers as? VertexConsumerProvider.Immediate)?.draw()
-        }
-
-        ParkourCommand.register()
-
-        // Kuudra
+        // Kuudra + Dungeons (merged AutoRequeue)
         DtTitle.register()
         AutoRequeue.register()
         InfernalKeyTracker.register()
-
-        // Dungeons
         DungeonDtTitle.register()
-        DungeonAutoRequeue.register()
+
+        // Discord
+        DiscordListener.register()
 
         // Dev
         DevTools.register()
+
+        // Join event
+        ClientPlayConnectionEvents.JOIN.register { _, _, _ ->
+            EntityHighlight.rescan()
+        }
 
         ClientTickEvents.END_CLIENT_TICK.register { client ->
             if (TestCommand.openGuiNextTick) {
@@ -93,16 +78,16 @@ object FamilyAddons : ClientModInitializer {
                 TestCommand.openConfigNextTick = false
                 FamilyConfigManager.openGui()
             }
-
             val currentScreen = client.currentScreen
-            if (previousScreen != null && currentScreen == null) {
-                FamilyConfigManager.save()
-            }
+            if (previousScreen != null && currentScreen == null) FamilyConfigManager.save()
             previousScreen = currentScreen
         }
 
         ClientTickEvents.END_CLIENT_TICK.register { client ->
-            val screen = client.currentScreen as? HudEditorScreen ?: return@register
+            val screen = client.currentScreen as? HudEditorScreen ?: run {
+                hudEditorMouseWasDown = false
+                return@register
+            }
             val mouseDown = org.lwjgl.glfw.GLFW.glfwGetMouseButton(
                 client.window.handle,
                 org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT
@@ -116,7 +101,4 @@ object FamilyAddons : ClientModInitializer {
 
         LOGGER.info("FamilyAddons $VERSION loaded!")
     }
-
-    private var hudEditorMouseWasDown = false
-    private var previousScreen: Screen? = null
 }
