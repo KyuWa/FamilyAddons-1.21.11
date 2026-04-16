@@ -18,6 +18,7 @@ object FamilyAddons : ClientModInitializer {
 
     val LOGGER = LoggerFactory.getLogger("FamilyAddons")
     const val VERSION = "1.0.0"
+    const val MC_VERSION = "1.21.11"
 
     private var hudEditorMouseWasDown = false
     private var previousScreen: Screen? = null
@@ -25,8 +26,11 @@ object FamilyAddons : ClientModInitializer {
     override fun onInitializeClient() {
         LOGGER.info("FamilyAddons $VERSION loading...")
 
+        AutoUpdater.register()
+
         FamilyConfigManager.load()
         KeyFetcher.fetchIfNeeded()
+
         TestCommand.register()
 
         // Chat
@@ -61,9 +65,6 @@ object FamilyAddons : ClientModInitializer {
         // Bestiary
         BestiaryTracker.register()
         BestiaryZoneHighlight.register()
-
-        // Discord
-        DiscordListener.register()
 
         // Player Disguise sync (multi-player Cloudflare sync)
         SharedDisguiseSync.register()

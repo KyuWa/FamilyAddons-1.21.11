@@ -8,8 +8,6 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallba
 import net.minecraft.client.MinecraftClient
 import net.minecraft.text.Text
 import org.kyowa.familyaddons.config.FamilyConfigManager
-import org.kyowa.familyaddons.features.DiscordListener
-import org.kyowa.familyaddons.features.HudEditorScreen
 import org.kyowa.familyaddons.features.NpcLocations
 import org.kyowa.familyaddons.features.Parkour
 import org.kyowa.familyaddons.features.PartyRepCheck
@@ -203,13 +201,6 @@ object TestCommand {
                         .then(literal("resetbest").executes { Parkour.resetBest(); 1 })
                         .then(literal("listcps").executes { Parkour.listCheckpoints(); 1 }))
 
-                    // /fa claim <channelId>
-                    .then(literal("claim")
-                        .then(argument("channelId", StringArgumentType.word())
-                            .executes { ctx ->
-                                DiscordListener.sendClaim(StringArgumentType.getString(ctx, "channelId"))
-                                1
-                            }))
             )
         }
     }
