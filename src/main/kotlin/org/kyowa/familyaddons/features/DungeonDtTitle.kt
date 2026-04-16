@@ -16,7 +16,7 @@ object DungeonDtTitle {
     private var titleText: String? = null
     private var titleTicks = 0
 
-    const val PREVIEW_TEXT = "§e[MVP++] Player §crequested §fDT! §8(Dungeon)"
+    const val PREVIEW_TEXT = "§e[MVP++] Player §crequested §fDT!"
 
     fun show(text: String) {
         if (!FamilyConfigManager.config.dungeons.dtTitle) return
@@ -30,16 +30,6 @@ object DungeonDtTitle {
 
     fun getScale() = FamilyConfigManager.config.dungeons.dungeonDtTitleScale.toFloatOrNull()?.coerceAtLeast(1f) ?: 2f
 
-    fun resolvePos(sw: Int, sh: Int, scale: Float, textWidth: Int): Pair<Int, Int> {
-        return if (FamilyConfigManager.config.dungeons.dungeonDtTitleHudX == -1 || FamilyConfigManager.config.dungeons.dungeonDtTitleHudY == -1) {
-            val x = ((sw - textWidth * scale) / 2f).toInt()
-            val y = (sh / 2f - 30f * scale).toInt()
-            x to y
-        } else {
-            FamilyConfigManager.config.dungeons.dungeonDtTitleHudX to FamilyConfigManager.config.dungeons.dungeonDtTitleHudY
-        }
-    }
-
     fun register() {
         HudRenderCallback.EVENT.register { context, _ ->
             val text = titleText ?: return@register
@@ -52,7 +42,6 @@ object DungeonDtTitle {
                 elapsed < FADE_IN + HOLD -> 255
                 else -> ((1f - (elapsed - FADE_IN - HOLD).toFloat() / FADE_OUT) * 255).toInt()
             }.coerceIn(0, 255)
-
             if (alpha == 0) return@register
 
             val client = MinecraftClient.getInstance()
@@ -62,7 +51,10 @@ object DungeonDtTitle {
             val sh = context.scaledWindowHeight
             val plain = text.replace(COLOR_CODE_REGEX, "")
             val tw = renderer.getWidth(plain)
-            val (x, y) = resolvePos(sw, sh, scale, tw)
+
+            // Always centered, slightly above center — same as 1.21.10
+            val x = ((sw - tw * scale) / 2f).toInt()
+            val y = (sh / 2f - 30f * scale).toInt()
             val color = (alpha shl 24) or 0xFFFFFF
 
             val matrices = context.matrices

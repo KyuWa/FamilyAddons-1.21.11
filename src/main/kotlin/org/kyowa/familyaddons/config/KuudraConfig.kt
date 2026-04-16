@@ -34,6 +34,16 @@ class KuudraConfig {
     @ConfigEditorBoolean
     var requeueInfernal = true
 
+    @Expose @JvmField
+    @ConfigOption(name = "Check Party Size", desc = "Cancel requeue if party has fewer than 4 players.")
+    @ConfigEditorBoolean
+    var checkPartySize = true
+
+    @Expose @JvmField
+    @ConfigOption(name = "Requeue Delay", desc = "Seconds to wait before requeuing after Kuudra ends.")
+    @ConfigEditorSlider(minValue = 0f, maxValue = 10f, minStep = 1f)
+    var requeueDelaySecs = 0f
+
     // DT Title accordion
     @Expose @JvmField
     @ConfigOption(name = "DT Title", desc = "")
@@ -42,13 +52,14 @@ class KuudraConfig {
 
     @Expose @JvmField
     @ConfigAccordionId(id = 1)
-    @ConfigOption(name = "Enable DT Title", desc = "Show a fading title when someone requests DT in party chat.")
+    @ConfigOption(name = "Enable DT Title", desc = "Show a fading centered title when someone requests DT in party chat.")
     @ConfigEditorBoolean
     var dtTitle = true
 
+    // -1 = auto-center
     @Expose @JvmField var dtTitleHudX = -1
     @Expose @JvmField var dtTitleHudY = -1
-    @Expose @JvmField var dtTitleScale = "1.0"
+    @Expose @JvmField var dtTitleScale = "2.0"
 
     // Key Tracker accordion
     @Expose @JvmField
@@ -61,11 +72,6 @@ class KuudraConfig {
     @ConfigOption(name = "Enable Key Tracker", desc = "Show key material counts in Mage/Barbarian shop.")
     @ConfigEditorBoolean
     var keyTracker = true
-
-    @Expose @JvmField
-    @ConfigOption(name = "Requeue Delay", desc = "Seconds to wait before requeuing after Kuudra ends.")
-    @ConfigEditorSlider(minValue = 0f, maxValue = 10f, minStep = 1f)
-    var requeueDelaySecs = 0f
 
     @Expose @JvmField var keyTrackerHudX = 10
     @Expose @JvmField var keyTrackerHudY = 10

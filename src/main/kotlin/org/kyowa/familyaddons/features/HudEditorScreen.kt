@@ -4,7 +4,6 @@ import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback
 import net.minecraft.client.MinecraftClient
 import net.minecraft.client.gui.DrawContext
 import net.minecraft.client.gui.screen.Screen
-import net.minecraft.client.render.RenderTickCounter
 import net.minecraft.text.Text
 import org.kyowa.familyaddons.COLOR_CODE_REGEX
 import org.kyowa.familyaddons.config.FamilyConfigManager
@@ -13,21 +12,19 @@ class HudEditorScreen : Screen(Text.literal("FA HUD Editor")) {
 
     data class HudElement(
         val id: String,
-        val label: String,         // shown in top-left corner selector
+        val label: String,
         var x: Int,
         var y: Int,
-        var w: Int,                // width at scale 1.0 — never changes
-        var h: Int,                // height at scale 1.0 — never changes
+        var w: Int,
+        var h: Int,
         var scale: Float = 1f,
         var dragging: Boolean = false,
         var dragOffX: Double = 0.0,
         var dragOffY: Double = 0.0,
         val canScale: Boolean = false,
         val onSave: (HudElement) -> Unit,
-        // render the actual content at (0,0) unscaled — we handle matrix push/pop
         val renderContent: (context: DrawContext, elem: HudElement) -> Unit
     ) {
-        // Scaled pixel bounds on screen
         val screenW get() = (w * scale).toInt()
         val screenH get() = (h * scale).toInt()
     }
@@ -50,10 +47,8 @@ class HudEditorScreen : Screen(Text.literal("FA HUD Editor")) {
             scale = Parkour.hudScale,
             canScale = true,
             onSave = { elem ->
-                Parkour.hudX = elem.x
-                Parkour.hudY = elem.y
-                Parkour.hudScale = elem.scale
-                Parkour.save()
+                Parkour.hudX = elem.x; Parkour.hudY = elem.y
+                Parkour.hudScale = elem.scale; Parkour.save()
             },
             renderContent = { ctx, _ ->
                 ctx.drawText(tr, "§f0:12.345  §7CP §f2§7/§f5", 0, 0, -1, true)
@@ -68,37 +63,32 @@ class HudEditorScreen : Screen(Text.literal("FA HUD Editor")) {
             scale = Parkour.arrowHudScale,
             canScale = true,
             onSave = { elem ->
-                Parkour.arrowHudX = elem.x
-                Parkour.arrowHudY = elem.y
-                Parkour.arrowHudScale = elem.scale
-                Parkour.save()
+                Parkour.arrowHudX = elem.x; Parkour.arrowHudY = elem.y
+                Parkour.arrowHudScale = elem.scale; Parkour.save()
             },
             renderContent = { ctx, _ ->
                 ctx.drawText(tr, "§e↑", 0, 0, -1, true)
-                ctx.drawText(tr, "§f12m", 0, 12, -1, true)
+                ctx.drawText(tr, "§f45m", 0, 12, -1, true)
             }
         ))
 
-        // Parkour Checkpoint Notification
+        // Parkour Checkpoint Notif
         elements.add(HudElement(
-            id = "parkourCpNotif", label = "Parkour Checkpoint",
+            id = "parkourCp", label = "Parkour Checkpoint",
             x = Parkour.cpHudX, y = Parkour.cpHudY,
-            w = 130, h = 12,
+            w = 160, h = 12,
             scale = Parkour.cpHudScale,
             canScale = true,
             onSave = { elem ->
-                Parkour.cpHudX = elem.x
-                Parkour.cpHudY = elem.y
-                Parkour.cpHudScale = elem.scale
-                Parkour.save()
+                Parkour.cpHudX = elem.x; Parkour.cpHudY = elem.y
+                Parkour.cpHudScale = elem.scale; Parkour.save()
             },
             renderContent = { ctx, _ ->
                 ctx.drawText(tr, "§e§lCheckpoint 2/5", 0, 0, -1, true)
             }
         ))
 
-        // --- Infernal Key Tracker ---
-        // Measure actual size from InfernalKeyTracker
+        // Key Tracker
         val ktW = 120
         val ktH = InfernalKeyTracker.getLineCount() * 10 + 4
         elements.add(HudElement(
@@ -111,16 +101,13 @@ class HudEditorScreen : Screen(Text.literal("FA HUD Editor")) {
                 FamilyConfigManager.config.kuudra.keyTrackerHudX = elem.x
                 FamilyConfigManager.config.kuudra.keyTrackerHudY = elem.y
             },
-            renderContent = { ctx, _ ->
-                InfernalKeyTracker.renderLines(ctx)
-            }
+            renderContent = { ctx, _ -> InfernalKeyTracker.renderLines(ctx) }
         ))
 
-        // --- Kuudra DT Title ---
+        // Kuudra DT Title
         val dtScale = DtTitle.getScale()
         val dtPlain = DtTitle.PREVIEW_TEXT.replace(COLOR_CODE_REGEX, "")
         val dtW = tr.getWidth(dtPlain)
-        val dtH = 10
         val dtX = if (FamilyConfigManager.config.kuudra.dtTitleHudX == -1)
             ((sw - dtW * dtScale) / 2f).toInt()
         else FamilyConfigManager.config.kuudra.dtTitleHudX
@@ -131,7 +118,7 @@ class HudEditorScreen : Screen(Text.literal("FA HUD Editor")) {
         elements.add(HudElement(
             id = "dtTitle", label = "Kuudra DT Title",
             x = dtX, y = dtY,
-            w = dtW, h = dtH,
+            w = dtW, h = 10,
             scale = dtScale,
             canScale = true,
             onSave = { elem ->
@@ -144,11 +131,10 @@ class HudEditorScreen : Screen(Text.literal("FA HUD Editor")) {
             }
         ))
 
-        // --- Dungeon DT Title ---
+        // Dungeon DT Title
         val dunScale = DungeonDtTitle.getScale()
         val dunPlain = DungeonDtTitle.PREVIEW_TEXT.replace(COLOR_CODE_REGEX, "")
         val dunW = tr.getWidth(dunPlain)
-        val dunH = 10
         val dunX = if (FamilyConfigManager.config.dungeons.dungeonDtTitleHudX == -1)
             ((sw - dunW * dunScale) / 2f).toInt()
         else FamilyConfigManager.config.dungeons.dungeonDtTitleHudX
@@ -159,7 +145,7 @@ class HudEditorScreen : Screen(Text.literal("FA HUD Editor")) {
         elements.add(HudElement(
             id = "dungeonDtTitle", label = "Dungeon DT Title",
             x = dunX, y = dunY,
-            w = dunW, h = dunH,
+            w = dunW, h = 10,
             scale = dunScale,
             canScale = true,
             onSave = { elem ->
@@ -171,15 +157,62 @@ class HudEditorScreen : Screen(Text.literal("FA HUD Editor")) {
                 ctx.drawText(tr, DungeonDtTitle.PREVIEW_TEXT, 0, 0, 0xFFFFFFFF.toInt(), true)
             }
         ))
+
+        // Bestiary HUD
+        val bCfg = FamilyConfigManager.config.bestiary
+        val mobName = if (bCfg.mobName.isNotBlank()) bCfg.mobName else "Zombie"
+        elements.add(HudElement(
+            id = "bestiary", label = "Bestiary HUD",
+            x = bCfg.hudX, y = bCfg.hudY,
+            w = BestiaryTracker.HUD_W, h = BestiaryTracker.hudH(),
+            scale = bCfg.hudScale,
+            canScale = true,
+            onSave = { elem ->
+                FamilyConfigManager.config.bestiary.hudX = elem.x
+                FamilyConfigManager.config.bestiary.hudY = elem.y
+                FamilyConfigManager.config.bestiary.hudScale = elem.scale
+            },
+            renderContent = { ctx, _ ->
+                val isSession = FamilyConfigManager.config.bestiary.displayMode == 1
+                var ry = 3
+                ctx.drawText(tr, "§6§l$mobName Bestiary", 4, ry, -1, true); ry += 12
+                ctx.drawText(tr, "§eKills: §f${"%,d".format(BestiaryTracker.kills)}", 4, ry, -1, true); ry += 10
+                ctx.drawText(tr, "§eBestiary Kills: §f${BestiaryTracker.bestiaryProgress}", 4, ry, -1, true); ry += 10
+                if (isSession) ctx.drawText(tr, "§eUptime: §f0m 0s", 4, ry, -1, true)
+            }
+        ))
+
+        // Pickobulus Timer
+        val pbScale = PickaxeAbility.getScale()
+        val pbPlain = PickaxeAbility.PREVIEW_TEXT.replace(COLOR_CODE_REGEX, "")
+        val pbW = tr.getWidth(pbPlain)
+        val pbX = if (FamilyConfigManager.config.mining.pickobulusHudX == -1)
+            ((sw - pbW * pbScale) / 2f).toInt()
+        else FamilyConfigManager.config.mining.pickobulusHudX
+        val pbY = if (FamilyConfigManager.config.mining.pickobulusHudY == -1)
+            (sh / 2f + 40f).toInt()
+        else FamilyConfigManager.config.mining.pickobulusHudY
+
+        elements.add(HudElement(
+            id = "pickobulusTimer", label = "Pickobulus Timer",
+            x = pbX, y = pbY,
+            w = pbW + 4, h = 10,
+            scale = pbScale,
+            canScale = true,
+            onSave = { elem ->
+                FamilyConfigManager.config.mining.pickobulusHudX = elem.x
+                FamilyConfigManager.config.mining.pickobulusHudY = elem.y
+                FamilyConfigManager.config.mining.pickobulusHudScale = "%.1f".format(elem.scale)
+            },
+            renderContent = { ctx, _ ->
+                ctx.drawText(tr, Text.literal(PickaxeAbility.PREVIEW_TEXT), 0, 0, 0xFFFFFFFF.toInt(), true)
+            }
+        ))
     }
 
     override fun render(context: DrawContext, mouseX: Int, mouseY: Int, delta: Float) {
-        // Dim background
         context.fill(0, 0, width, height, 0x88000000.toInt())
-
         val tr = MinecraftClient.getInstance().textRenderer
-
-        // Hint bar at top
         val hint = "§7Drag to move  |  §eScroll §7to scale  |  §eEsc §7to save"
         val hintW = tr.getWidth(hint.replace(COLOR_CODE_REGEX, ""))
         context.drawText(tr, hint, (width - hintW) / 2, 8, -1, true)
@@ -189,12 +222,8 @@ class HudEditorScreen : Screen(Text.literal("FA HUD Editor")) {
                 elem.x = (mouseX - elem.dragOffX).toInt()
                 elem.y = (mouseY - elem.dragOffY).toInt()
             }
-
-            val sw = elem.screenW
-            val sh = elem.screenH
+            val sw = elem.screenW; val sh = elem.screenH
             val isActive = elem == activeElement
-
-            // Draw actual content scaled
             val matrices = context.matrices
             matrices.pushMatrix()
             matrices.translate(elem.x.toFloat(), elem.y.toFloat())
@@ -202,20 +231,15 @@ class HudEditorScreen : Screen(Text.literal("FA HUD Editor")) {
             elem.renderContent(context, elem)
             matrices.popMatrix()
 
-            // 1px border — always 1px regardless of scale
             val border = if (isActive) 0xFFFFFF00.toInt() else 0xFFFFFFFF.toInt()
-            context.fill(elem.x - 1,      elem.y - 1,      elem.x + sw + 1, elem.y,          border)
-            context.fill(elem.x - 1,      elem.y + sh,     elem.x + sw + 1, elem.y + sh + 1, border)
-            context.fill(elem.x - 1,      elem.y,          elem.x,          elem.y + sh,      border)
-            context.fill(elem.x + sw,     elem.y,          elem.x + sw + 1, elem.y + sh,      border)
-
-            // Scale label below if scalable
+            context.fill(elem.x - 1, elem.y - 1, elem.x + sw + 1, elem.y, border)
+            context.fill(elem.x - 1, elem.y + sh, elem.x + sw + 1, elem.y + sh + 1, border)
+            context.fill(elem.x - 1, elem.y, elem.x, elem.y + sh, border)
+            context.fill(elem.x + sw, elem.y, elem.x + sw + 1, elem.y + sh, border)
             if (elem.canScale) {
-                val scaleStr = "§7${"%.1f".format(elem.scale)}x"
-                context.drawText(tr, scaleStr, elem.x, elem.y + sh + 3, -1, true)
+                context.drawText(tr, "§7${"%.1f".format(elem.scale)}x", elem.x, elem.y + sh + 3, -1, true)
             }
         }
-
         super.render(context, mouseX, mouseY, delta)
     }
 
@@ -224,9 +248,7 @@ class HudEditorScreen : Screen(Text.literal("FA HUD Editor")) {
         val elem = elements.lastOrNull { e ->
             mx >= e.x && mx <= e.x + e.screenW && my >= e.y && my <= e.y + e.screenH
         } ?: activeElement ?: return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount)
-
         if (!elem.canScale) return true
-
         val delta = if (verticalAmount > 0) 0.1f else -0.1f
         elem.scale = "%.1f".format((elem.scale + delta).coerceIn(0.5f, 5f)).toFloat()
         return true
@@ -247,9 +269,7 @@ class HudEditorScreen : Screen(Text.literal("FA HUD Editor")) {
         activeElement = null
     }
 
-    fun onMouseRelease() {
-        elements.forEach { it.dragging = false }
-    }
+    fun onMouseRelease() { elements.forEach { it.dragging = false } }
 
     override fun close() {
         elements.forEach { it.onSave(it) }

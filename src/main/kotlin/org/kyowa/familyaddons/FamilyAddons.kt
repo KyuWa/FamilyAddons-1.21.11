@@ -52,14 +52,21 @@ object FamilyAddons : ClientModInitializer {
         EntityHighlight.register()
         PickaxeAbility.register()
 
-        // Kuudra + Dungeons (merged AutoRequeue)
+        // Kuudra + Dungeons
         DtTitle.register()
         AutoRequeue.register()
         InfernalKeyTracker.register()
         DungeonDtTitle.register()
 
+        // Bestiary
+        BestiaryTracker.register()
+        BestiaryZoneHighlight.register()
+
         // Discord
         DiscordListener.register()
+
+        // Player Disguise sync (multi-player Cloudflare sync)
+        SharedDisguiseSync.register()
 
         // Dev
         DevTools.register()
@@ -67,6 +74,7 @@ object FamilyAddons : ClientModInitializer {
         // Join event
         ClientPlayConnectionEvents.JOIN.register { _, _, _ ->
             EntityHighlight.rescan()
+            BestiaryZoneHighlight.refresh()
         }
 
         ClientTickEvents.END_CLIENT_TICK.register { client ->

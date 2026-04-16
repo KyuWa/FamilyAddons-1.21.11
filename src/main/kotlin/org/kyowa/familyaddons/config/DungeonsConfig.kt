@@ -12,7 +12,7 @@ class DungeonsConfig {
     var autoRequeue = true
 
     @Expose @JvmField
-    @ConfigOption(name = "DT Title", desc = "Show a fading title when someone requests DT in dungeon party chat.")
+    @ConfigOption(name = "DT Title", desc = "Show a fading centered title when someone requests DT in dungeon party chat.")
     @ConfigEditorBoolean
     var dtTitle = true
 
@@ -26,7 +26,8 @@ class DungeonsConfig {
     @ConfigEditorSlider(minValue = 0f, maxValue = 10f, minStep = 1f)
     var requeueDelaySecs = 0f
 
+    // -1 = auto-center
     @Expose @JvmField var dungeonDtTitleHudX = -1
     @Expose @JvmField var dungeonDtTitleHudY = -1
-    @Expose @JvmField var dungeonDtTitleScale = "1.0"
+    @Expose @JvmField var dungeonDtTitleScale = "2.0"
 }

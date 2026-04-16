@@ -13,6 +13,9 @@ import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.SpawnReason;
 import net.minecraft.entity.passive.AnimalEntity;
+import net.minecraft.entity.passive.SheepEntity;
+import net.minecraft.entity.passive.SnowGolemEntity;
+import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.entity.mob.ZombieEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.client.model.Model;
@@ -20,6 +23,7 @@ import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
 import org.kyowa.familyaddons.EntityRefAccessor;
 import org.kyowa.familyaddons.features.PlayerDisguise;
+import org.kyowa.familyaddons.features.SharedDisguiseSync;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -35,12 +39,13 @@ public abstract class PlayerDisguiseMixin<T extends LivingEntity,
         M extends Model<?>> {
 
     private static final Map<Class<?>, Method> createRenderStateCache = new HashMap<>();
-
-    private static LivingEntity cachedMob = null;
-    private static String cachedMobId = null;
-    private static Boolean cachedBaby = null;
-    private static LivingEntityRenderState cachedMobState = null;
-    private static Class<?> cachedRendererClass = null;
+    private static final Map<String, LivingEntity> cachedMobs = new HashMap<>();
+    private static final Map<String, String> cachedMobIds = new HashMap<>();
+    private static final Map<String, Boolean> cachedBabies = new HashMap<>();
+    private static final Map<String, Boolean> cachedSheareds = new HashMap<>();
+    private static final Map<String, LivingEntityRenderState> cachedMobStates = new HashMap<>();
+    private static final Map<String, Class<?>> cachedRendererClasses = new HashMap<>();
+    private static final Map<String, Integer> mobAge = new HashMap<>();
 
     @Inject(
             method = "render(Lnet/minecraft/client/render/entity/state/LivingEntityRenderState;Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/command/OrderedRenderCommandQueue;Lnet/minecraft/client/render/state/CameraRenderState;)V",
@@ -48,67 +53,111 @@ public abstract class PlayerDisguiseMixin<T extends LivingEntity,
             cancellable = true
     )
     private void onRender(S state, MatrixStack matrixStack, OrderedRenderCommandQueue queue, CameraRenderState cameraRenderState, CallbackInfo ci) {
-        if (!PlayerDisguise.INSTANCE.isEnabled()) return;
         if (!(state instanceof PlayerEntityRenderState playerState)) return;
 
         MinecraftClient client = MinecraftClient.getInstance();
         LivingEntity entity = ((EntityRefAccessor) state).familyaddons$getEntity();
         if (!(entity instanceof PlayerEntity player)) return;
-
-        int scope = PlayerDisguise.INSTANCE.getScope();
-        boolean isSelf = player == client.player;
-        if (scope == 0 && !isSelf) return;
-
         if (player.isInvisibleTo(client.player)) return;
 
-        String mobId = PlayerDisguise.INSTANCE.getMobId();
+        boolean isSelf = player == client.player;
+        String username = player.getName().getString();
+
+        String mobId = null;
+        boolean baby = false;
+        boolean sheared = false;
+
+        if (isSelf) {
+            if (!PlayerDisguise.INSTANCE.isEnabled()) return;
+            mobId = PlayerDisguise.INSTANCE.getMobId();
+            baby = PlayerDisguise.INSTANCE.isBaby();
+            sheared = PlayerDisguise.INSTANCE.isSheared();
+        } else {
+            int scope = PlayerDisguise.INSTANCE.getScope();
+            if (PlayerDisguise.INSTANCE.isEnabled() && scope == 1) {
+                mobId = PlayerDisguise.INSTANCE.getMobId();
+                baby = PlayerDisguise.INSTANCE.isBaby();
+                sheared = PlayerDisguise.INSTANCE.isSheared();
+            } else {
+                SharedDisguiseSync.SyncedDisguise synced = SharedDisguiseSync.INSTANCE.getDisguise(username);
+                if (synced == null) return;
+                mobId = synced.getMobId();
+                baby = synced.getBaby();
+                sheared = synced.getSheared();
+            }
+        }
+
+        if (mobId == null || mobId.isEmpty()) return;
         Identifier id = Identifier.tryParse(mobId);
         if (id == null) return;
-
         EntityType<?> type = Registries.ENTITY_TYPE.get(id);
         if (type == null || type == EntityType.PLAYER) return;
 
-        boolean baby = PlayerDisguise.INSTANCE.isBaby();
+        String cachedId = cachedMobIds.get(username);
+        LivingEntity cachedMob = cachedMobs.get(username);
+        boolean cachedBaby = Boolean.TRUE.equals(cachedBabies.get(username));
+        boolean cachedSheared = Boolean.TRUE.equals(cachedSheareds.get(username));
 
-        // Recreate mob if ID or baby changed
-        if (cachedMob == null || !mobId.equals(cachedMobId) || baby != Boolean.TRUE.equals(cachedBaby)) {
+        if (cachedMob == null || !mobId.equals(cachedId) || baby != cachedBaby || sheared != cachedSheared) {
             try {
                 cachedMob = (LivingEntity) type.create(player.getEntityWorld(), SpawnReason.COMMAND);
-            } catch (Exception e) {
-                cachedMob = null;
-                return;
-            }
+            } catch (Exception e) { cachedMobs.remove(username); return; }
             if (cachedMob == null) return;
-            cachedMobId = mobId;
-            cachedBaby = baby;
-            cachedMobState = null;
-            cachedRendererClass = null;
 
+            // Baby: works for animals, zombies, AND villagers
             if (baby) {
-                if (cachedMob instanceof AnimalEntity animal) {
+                if (cachedMob instanceof VillagerEntity villager) {
+                    villager.setBreedingAge(-24000);
+                } else if (cachedMob instanceof AnimalEntity animal) {
                     animal.setBreedingAge(-24000);
                 } else if (cachedMob instanceof ZombieEntity zombie) {
                     zombie.setBaby(true);
                 }
             }
+
+            // Sheared: sheep removes wool, snow golem removes pumpkin
+            if (sheared) {
+                if (cachedMob instanceof SheepEntity sheep) {
+                    sheep.setSheared(true);
+                } else if (cachedMob instanceof SnowGolemEntity snowGolem) {
+                    snowGolem.setHasPumpkin(false);
+                }
+            }
+
+            cachedMobs.put(username, cachedMob);
+            cachedMobIds.put(username, mobId);
+            cachedBabies.put(username, baby);
+            cachedSheareds.put(username, sheared);
+            cachedMobStates.remove(username);
+            cachedRendererClasses.remove(username);
+            mobAge.remove(username);
         }
 
         LivingEntity mob = cachedMob;
-        // Sync position and rotation — only use current-tick fields (no prev* in 1.21.11)
         mob.setPos(player.getX(), player.getY(), player.getZ());
+
+
+
         mob.setYaw(player.getYaw());
+
         mob.setPitch(player.getPitch());
+
         mob.bodyYaw = player.bodyYaw;
+
         mob.headYaw = player.headYaw;
 
-        EntityRenderManager dispatcher = client.getEntityRenderDispatcher();
 
-        // Walk the class hierarchy to find createRenderState() — a no-arg method returning LivingEntityRenderState
-        Method createRenderState = createRenderStateCache.get(mob.getClass());
+        EntityRenderManager dispatcher = client.getEntityRenderDispatcher();
+        float partialTick = client.getRenderTickCounter().getTickProgress(true);
+
+        @SuppressWarnings("unchecked")
+        EntityRenderer<LivingEntity, LivingEntityRenderState> renderer =
+                (EntityRenderer<LivingEntity, LivingEntityRenderState>) dispatcher.getRenderer(mob);
+        if (renderer == null) return;
+
+        Method createRenderState = createRenderStateCache.get(renderer.getClass());
         if (createRenderState == null) {
-            EntityRenderer<?, ?> rendererRaw = dispatcher.getRenderer(mob);
-            if (rendererRaw == null) return;
-            Class<?> cls = rendererRaw.getClass();
+            Class<?> cls = renderer.getClass();
             outer:
             while (cls != null) {
                 for (Method m : cls.getDeclaredMethods()) {
@@ -116,77 +165,56 @@ public abstract class PlayerDisguiseMixin<T extends LivingEntity,
                             LivingEntityRenderState.class.isAssignableFrom(m.getReturnType())) {
                         m.setAccessible(true);
                         createRenderState = m;
-                        createRenderStateCache.put(mob.getClass(), m);
                         break outer;
                     }
                 }
                 cls = cls.getSuperclass();
             }
             if (createRenderState == null) return;
+            createRenderStateCache.put(renderer.getClass(), createRenderState);
         }
 
-        EntityRenderer<?, ?> rendererRaw = dispatcher.getRenderer(mob);
-        if (rendererRaw == null) return;
-
-        // We need the renderer typed as EntityRenderer<LivingEntity, LivingEntityRenderState>
-        // Use raw types via reflection to avoid the generic capture error
-        @SuppressWarnings("rawtypes")
-        EntityRenderer renderer = rendererRaw;
-
-        // Recreate mob render state only if renderer class changed
-        if (cachedMobState == null || renderer.getClass() != cachedRendererClass) {
+        LivingEntityRenderState mobState = cachedMobStates.get(username);
+        Class<?> cachedRendererClass = cachedRendererClasses.get(username);
+        if (mobState == null || renderer.getClass() != cachedRendererClass) {
             try {
-                cachedMobState = (LivingEntityRenderState) createRenderState.invoke(renderer);
-                cachedRendererClass = renderer.getClass();
-            } catch (Exception e) {
-                return;
-            }
+                mobState = (LivingEntityRenderState) createRenderState.invoke(renderer);
+                cachedMobStates.put(username, mobState);
+                cachedRendererClasses.put(username, renderer.getClass());
+            } catch (Exception e) { return; }
         }
 
-        LivingEntityRenderState mobState = cachedMobState;
-
+        // Tick the mob so flying/animated mobs have correct animation state
         try {
-            //noinspection unchecked
-            renderer.updateRenderState(mob, mobState, 1.0f);
-        } catch (Exception e) {
-            return;
-        }
+            int age = mobAge.getOrDefault(username, 0) + 1;
+            mobAge.put(username, age);
+            mob.age = age;
+            // Give all mobs a small upward velocity — flying mobs need this for wing animations,
+            // grounded mobs ignore it since updateRenderState uses their actual movement data
+            mob.setVelocity(0.0, 0.1, 0.0);
+        } catch (Exception ignored) {}
 
-        // Copy animation fields from player render state so the mob moves like the player
-        mobState.bodyYaw                  = playerState.bodyYaw;
-        mobState.relativeHeadYaw          = playerState.relativeHeadYaw;
-        mobState.pitch                    = playerState.pitch;
+        try { renderer.updateRenderState(mob, mobState, 1.0f); } catch (Exception e) { return; }
+
+        mobState.bodyYaw = playerState.bodyYaw;
+        mobState.relativeHeadYaw = playerState.relativeHeadYaw;
+        mobState.pitch = playerState.pitch;
         mobState.limbSwingAnimationProgress = playerState.limbSwingAnimationProgress;
-        mobState.limbSwingAmplitude       = playerState.limbSwingAmplitude;
-        mobState.age                      = playerState.age;
-        mobState.invisible                = false;
-        mobState.invisibleToPlayer        = false;
-        mobState.light                    = playerState.light;
-        mobState.x                        = playerState.x;
-        mobState.y                        = playerState.y;
-        mobState.z                        = playerState.z;
+        mobState.limbSwingAmplitude = playerState.limbSwingAmplitude;
+        mobState.age = playerState.age;
+        mobState.invisible = false;
+        mobState.invisibleToPlayer = false;
+        mobState.light = playerState.light;
+        mobState.x = playerState.x;
+        mobState.y = playerState.y;
+        mobState.z = playerState.z;
 
-        try {
-            //noinspection unchecked
-            renderer.render(mobState, matrixStack, queue, cameraRenderState);
-        } catch (Exception e) {
-            return;
-        }
+        try { renderer.render(mobState, matrixStack, queue, cameraRenderState); } catch (Exception e) { return; }
 
-        // Render the player's name tag on top
         if (playerState.displayName != null && playerState.nameLabelPos != null) {
-            queue.submitLabel(
-                    matrixStack,
-                    playerState.nameLabelPos,
-                    0,
-                    playerState.displayName,
-                    !playerState.sneaking,
-                    playerState.light,
-                    playerState.squaredDistanceToCamera,
-                    cameraRenderState
-            );
+            queue.submitLabel(matrixStack, playerState.nameLabelPos, 0, playerState.displayName,
+                    !playerState.sneaking, playerState.light, playerState.squaredDistanceToCamera, cameraRenderState);
         }
-
         ci.cancel();
     }
 }
