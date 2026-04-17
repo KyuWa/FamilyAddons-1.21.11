@@ -76,6 +76,7 @@ object FamilyAddons : ClientModInitializer {
         ClientPlayConnectionEvents.JOIN.register { _, _, _ ->
             EntityHighlight.rescan()
             BestiaryZoneHighlight.refresh()
+            SharedDisguiseSync.fetchAllNow() // Re-fetch disguises on every server join so they load immediately
         }
 
         ClientTickEvents.END_CLIENT_TICK.register { client ->

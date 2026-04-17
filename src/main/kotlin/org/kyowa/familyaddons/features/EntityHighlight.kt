@@ -18,8 +18,34 @@ object EntityHighlight {
     val highlighted = mutableSetOf<Entity>()
     private var tick = 0
 
-    private fun getNames(): List<String> = FamilyConfigManager.config.highlight.mobNames
-        .split(",").map { it.trim().lowercase() }.filter { it.isNotBlank() }
+    private fun shouldScan(): Boolean {
+        if (FamilyConfigManager.config.highlight.enabled &&
+            FamilyConfigManager.config.highlight.mobNames.isNotBlank()) return true
+        val bestiary = FamilyConfigManager.config.bestiary
+        if (bestiary.zoneHighlightEnabled && bestiary.bestiaryZone != 0) return true
+        if (bestiary.mobName.isNotBlank()) return true
+        return false
+    }
+
+    private fun getNames(): List<String> {
+        val names = mutableListOf<String>()
+        if (FamilyConfigManager.config.highlight.enabled) {
+            FamilyConfigManager.config.highlight.mobNames
+                .split(",")
+                .map { it.trim().lowercase() }
+                .filter { it.isNotBlank() }
+                .forEach { if (it !in names) names.add(it) }
+        }
+        val bestiaryMob = FamilyConfigManager.config.bestiary.mobName.trim().lowercase()
+        if (bestiaryMob.isNotBlank() && bestiaryMob !in names) names.add(bestiaryMob)
+        if (FamilyConfigManager.config.bestiary.zoneHighlightEnabled) {
+            BestiaryZoneHighlight.activeMobNames.forEach { mob ->
+                val lower = mob.lowercase()
+                if (lower.isNotBlank() && lower !in names) names.add(lower)
+            }
+        }
+        return names
+    }
 
     private fun nameMatches(entity: Entity): Boolean {
         val names = getNames()
@@ -57,11 +83,12 @@ object EntityHighlight {
 
     fun register() {
         ClientTickEvents.END_CLIENT_TICK.register { _ ->
-            if (!FamilyConfigManager.config.highlight.enabled) {
+            if (!shouldScan()) {
                 if (highlighted.isNotEmpty()) highlighted.clear()
                 return@register
             }
-            if (tick++ % 20 != 0) return@register
+            val interval = FamilyConfigManager.config.utilities.highlightRescanInterval.toInt().coerceIn(1, 20)
+            if (tick++ % interval != 0) return@register
             rescan()
         }
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ -> highlighted.clear() }
@@ -70,8 +97,7 @@ object EntityHighlight {
     fun rescan() {
         highlighted.clear()
         val world = MinecraftClient.getInstance().world ?: return
-        val names = getNames()
-        if (names.isEmpty()) return
+        if (!shouldScan()) return
         world.entities.forEach { entity ->
             if (!entity.isAlive) return@forEach
             if (nameMatches(entity)) {
@@ -111,7 +137,7 @@ object EntityHighlight {
         drawAll(0.3f, FamilyRenderTypes.LINES_NO_DEPTH)
     }
 
-    fun hasHighlighted() = highlighted.isNotEmpty() && FamilyConfigManager.config.highlight.enabled
+    fun hasHighlighted() = highlighted.isNotEmpty() && shouldScan()
 
     internal fun drawBoxEdges(
         buf: VertexConsumer,
