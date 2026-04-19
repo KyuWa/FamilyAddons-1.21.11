@@ -19,12 +19,12 @@ class UtilitiesConfig {
     @Expose @JvmField
     @ConfigOption(name = "Item Prices", desc = "Show SkyBlock item prices in tooltips (AH, BIN, Bazaar, Pets).")
     @ConfigEditorBoolean
-    var itemPrices = true
+    var itemPrices = false
 
     @Expose @JvmField
     @ConfigOption(name = "Lock Hotbar Scroll", desc = "Prevent hotbar scroll from wrapping around (slot 1 won't go to slot 9 and vice versa).")
     @ConfigEditorBoolean
-    var lockHotbarScroll = true
+    var lockHotbarScroll = false
 
     @Expose @JvmField
     @ConfigOption(name = "Highlight Rescan Interval", desc = "How often (in ticks) to scan for mobs to highlight. Lower = faster detection, higher = better performance. Default 20 (1 second).")

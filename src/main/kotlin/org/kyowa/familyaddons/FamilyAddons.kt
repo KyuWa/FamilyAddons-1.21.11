@@ -17,7 +17,7 @@ val COLOR_CODE_REGEX = Regex("§.")
 object FamilyAddons : ClientModInitializer {
 
     val LOGGER = LoggerFactory.getLogger("FamilyAddons")
-    const val VERSION = "1.0.3"
+    const val VERSION = "1.0.4"
     const val MC_VERSION = "1.21.11"
 
     private var hudEditorMouseWasDown = false
@@ -55,6 +55,7 @@ object FamilyAddons : ClientModInitializer {
         ParkourCommand.register()
         EntityHighlight.register()
         PickaxeAbility.register()
+        WorldScanner.register()
 
         // Kuudra + Dungeons
         DtTitle.register()

@@ -5,6 +5,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.minecraft.client.MinecraftClient
+import net.minecraft.client.render.LightmapTextureManager
 import net.minecraft.client.render.VertexConsumer
 import net.minecraft.client.render.VertexConsumerProvider
 import net.minecraft.client.util.math.MatrixStack
@@ -12,6 +13,7 @@ import net.minecraft.entity.decoration.ArmorStandEntity
 import net.minecraft.entity.EquipmentSlot
 import net.minecraft.util.math.Vec3d
 import org.kyowa.familyaddons.config.FamilyConfigManager
+import kotlin.math.sqrt
 
 object CorpseESP {
 
@@ -132,6 +134,7 @@ object CorpseESP {
 
         val entry = matrices.peek()
 
+        // Pass 1: with depth, full alpha
         fun draw(alpha: Float, renderType: net.minecraft.client.render.RenderLayer) {
             val buf = consumers.getBuffer(renderType)
             for (c in visible) {
@@ -143,30 +146,40 @@ object CorpseESP {
         }
 
         draw(1.0f, FamilyRenderTypes.LINES)
-        draw(0.3f, FamilyRenderTypes.LINES_NO_DEPTH)
+        draw(1.0f, FamilyRenderTypes.LINES_NO_DEPTH)  // full alpha through walls too
 
         // Labels
         for (c in visible) {
             val dx = c.x - cam.x; val dy = c.y - cam.y; val dz = c.z - cam.z
-            val dist = Math.sqrt(dx*dx + dy*dy + dz*dz).toInt()
-            renderLabel(matrices, consumers, cam, c.x, c.y + 2.2, c.z, "§f${c.label} §7(${dist}m)")
+            val dist = sqrt(dx*dx + dy*dy + dz*dz)
+            renderLabel(matrices, consumers, cam, c.x, c.y + 2.2, c.z, "§f${c.label} §7(${dist.toInt()}m)", dist)
         }
     }
 
     private fun renderLabel(
-        matrices: MatrixStack, consumers: VertexConsumerProvider, cam: Vec3d,
-        x: Double, y: Double, z: Double, text: String
+        matrices: MatrixStack,
+        consumers: VertexConsumerProvider,
+        cam: Vec3d,
+        x: Double, y: Double, z: Double,
+        text: String,
+        dist: Double
     ) {
         val client = MinecraftClient.getInstance()
+        val tr = client.textRenderer
+        // Scale grows with distance: min=1.0, max=5.0
+        val scale = (dist / 10.0).coerceIn(1.0, 5.0).toFloat() * 0.025f
+
         matrices.push()
         matrices.translate(x - cam.x, y - cam.y, z - cam.z)
         matrices.multiply(client.gameRenderer.camera.rotation)
-        val scale = 0.025f
-        matrices.scale(-scale, -scale, scale)
-        val tr = client.textRenderer
+        matrices.scale(scale, -scale, scale)
         val w = tr.getWidth(text.replace(COLOR_CODE_REGEX, ""))
-        tr.draw(text, -w / 2f, 0f, -1, false, matrices.peek().positionMatrix, consumers,
-            net.minecraft.client.font.TextRenderer.TextLayerType.SEE_THROUGH, 0, 0xF000F0)
+        tr.draw(
+            text, -w / 2f, 0f, -1, true,
+            matrices.peek().positionMatrix, consumers,
+            net.minecraft.client.font.TextRenderer.TextLayerType.SEE_THROUGH,
+            0, LightmapTextureManager.MAX_LIGHT_COORDINATE
+        )
         matrices.pop()
     }
 

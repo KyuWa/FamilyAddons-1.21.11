@@ -6,13 +6,13 @@ import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.minecraft.client.MinecraftClient
-import net.minecraft.client.util.math.MatrixStack
+import net.minecraft.client.render.LightmapTextureManager
 import net.minecraft.client.render.VertexConsumerProvider
-import net.minecraft.util.math.Vec3d
+import net.minecraft.client.util.math.MatrixStack
 import net.minecraft.text.Text
+import net.minecraft.util.math.Vec3d
 import org.kyowa.familyaddons.FamilyAddons
 import java.io.File
-import org.kyowa.familyaddons.features.FamilyRenderTypes
 
 object Waypoints {
 
@@ -82,7 +82,7 @@ object Waypoints {
         val wps = waypointsByIsland[island] ?: return
         if (wps.isEmpty()) return
 
-        // No matrix translate — cam is subtracted directly in vertex positions
+        // Draw boxes
         fun drawBoxes(alpha: Float, renderType: net.minecraft.client.render.RenderLayer) {
             val buf = consumers.getBuffer(renderType)
             val entry = matrices.peek()
@@ -95,37 +95,43 @@ object Waypoints {
         }
 
         drawBoxes(1.0f, FamilyRenderTypes.LINES)
-        drawBoxes(1.0f, FamilyRenderTypes.LINES_NO_DEPTH)
+        drawBoxes(1.0f, FamilyRenderTypes.LINES_NO_DEPTH)  // full alpha through walls
 
         // Labels
         if (FamilyConfigManager.config.waypoints.showLabels) {
             for (wp in wps) {
-                val dx = wp.x - cam.x
-                val dy = wp.y - cam.y
-                val dz = wp.z - cam.z
-                val dist = Math.sqrt(dx * dx + dy * dy + dz * dz).toInt()
-                renderLabel(matrices, consumers, cam, wp.x + 0.5, wp.y + 1.5, wp.z + 0.5, "${wp.label} (${dist}m)")
+                val dx = wp.x + 0.5 - cam.x
+                val dy = wp.y + 1.5 - cam.y
+                val dz = wp.z + 0.5 - cam.z
+                val dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+                renderLabel(matrices, consumers, cam, wp.x + 0.5, wp.y + 1.5, wp.z + 0.5, "${wp.label} (${dist.toInt()}m)", dist)
             }
         }
     }
 
     private fun renderLabel(
-        matrices: MatrixStack, consumers: VertexConsumerProvider, cam: Vec3d,
-        x: Double, y: Double, z: Double, text: String
+        matrices: MatrixStack,
+        consumers: VertexConsumerProvider,
+        cam: Vec3d,
+        x: Double, y: Double, z: Double,
+        text: String,
+        dist: Double
     ) {
         val client = MinecraftClient.getInstance()
+        val tr = client.textRenderer
+        // Scale grows with distance: min=1.0, max=5.0
+        val scale = (dist / 10.0).coerceIn(1.0, 5.0).toFloat() * 0.025f
+
         matrices.push()
         matrices.translate(x - cam.x, y - cam.y, z - cam.z)
-        matrices.multiply(MinecraftClient.getInstance().gameRenderer.camera.getRotation())
-        val scale = 0.025f
-        matrices.scale(-scale, -scale, scale)
-        val tr = client.textRenderer
-        val w = tr.getWidth(text)
+        matrices.multiply(client.gameRenderer.camera.rotation)
+        matrices.scale(scale, -scale, scale)
+        val w = tr.getWidth(text.replace(COLOR_CODE_REGEX, ""))
         tr.draw(
-            text, -w / 2f, 0f, -1, false,
+            text, -w / 2f, 0f, -1, true,
             matrices.peek().positionMatrix, consumers,
             net.minecraft.client.font.TextRenderer.TextLayerType.SEE_THROUGH,
-            0, 0xF000F0
+            0, LightmapTextureManager.MAX_LIGHT_COORDINATE
         )
         matrices.pop()
     }
@@ -184,7 +190,7 @@ object Waypoints {
         }
     }
 
-    private fun save() {
+    fun save() {
         try {
             saveFile.parentFile.mkdirs()
             saveFile.writeText(gson.toJson(waypointsByIsland))
