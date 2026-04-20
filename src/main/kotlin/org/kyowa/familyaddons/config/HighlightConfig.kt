@@ -4,6 +4,7 @@ import com.google.gson.annotations.Expose
 import io.github.notenoughupdates.moulconfig.annotations.ConfigEditorBoolean
 import io.github.notenoughupdates.moulconfig.annotations.ConfigEditorColour
 import io.github.notenoughupdates.moulconfig.annotations.ConfigEditorDropdown
+import io.github.notenoughupdates.moulconfig.annotations.ConfigEditorSlider
 import io.github.notenoughupdates.moulconfig.annotations.ConfigEditorText
 import io.github.notenoughupdates.moulconfig.annotations.ConfigOption
 
@@ -29,7 +30,17 @@ class HighlightConfig {
     var drawingStyle = 0
 
     @Expose @JvmField
-    @ConfigOption(name = "Show Through Walls", desc = "Show highlight even through blocks.")
+    @ConfigOption(name = "Tracer Lines", desc = "Draw lines from your crosshair to the nearest highlighted mobs.")
     @ConfigEditorBoolean
-    var throughWalls = true
+    var tracerEnabled = false
+
+    @Expose @JvmField
+    @ConfigOption(name = "Tracer Count", desc = "How many of the closest highlighted mobs to draw tracers to (1–20).")
+    @ConfigEditorSlider(minValue = 1f, maxValue = 20f, minStep = 1f)
+    var tracerCount = 5f
+
+    @Expose @JvmField
+    @ConfigOption(name = "Tracer Range", desc = "Maximum distance in chunks to draw tracers. Mobs further than this are ignored (ESP is limited to 4 chunks so prob that is best).")
+    @ConfigEditorSlider(minValue = 2f, maxValue = 16f, minStep = 1f)
+    var tracerChunkRange = 4f
 }

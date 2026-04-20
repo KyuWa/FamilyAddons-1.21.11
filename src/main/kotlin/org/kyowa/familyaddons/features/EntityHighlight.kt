@@ -19,8 +19,7 @@ object EntityHighlight {
     private var tick = 0
 
     private fun shouldScan(): Boolean {
-        if (FamilyConfigManager.config.highlight.enabled &&
-            FamilyConfigManager.config.highlight.mobNames.isNotBlank()) return true
+        if (FamilyConfigManager.config.highlight.enabled) return true
         val bestiary = FamilyConfigManager.config.bestiary
         if (bestiary.zoneHighlightEnabled && bestiary.bestiaryZone != 0) return true
         if (bestiary.mobName.isNotBlank()) return true
@@ -111,7 +110,6 @@ object EntityHighlight {
         val config = FamilyConfigManager.config.highlight
         if (!config.enabled) return
         if (highlighted.isEmpty()) return
-        if (config.drawingStyle == 1) return
 
         val (r, g, b) = try {
             val parts = config.color.split(":")
@@ -120,28 +118,95 @@ object EntityHighlight {
 
         highlighted.removeIf { !it.isAlive }
 
-        fun drawAll(alpha: Float, renderType: net.minecraft.client.render.RenderLayer) {
-            val buf = consumers.getBuffer(renderType)
-            val entry = matrices.peek()
-            for (entity in highlighted) {
-                if (!entity.isAlive) continue
-                val bb = entity.boundingBox
-                drawBoxEdges(buf, entry,
-                    (bb.minX - cam.x).toFloat(), (bb.minY - cam.y).toFloat(), (bb.minZ - cam.z).toFloat(),
-                    (bb.maxX - cam.x).toFloat(), (bb.maxY - cam.y).toFloat(), (bb.maxZ - cam.z).toFloat(),
-                    r, g, b, alpha)
+        // ── ESP boxes ─────────────────────────────────────────────────
+        if (config.drawingStyle == 0) {
+            fun drawAll(alpha: Float, renderType: net.minecraft.client.render.RenderLayer) {
+                val buf = consumers.getBuffer(renderType)
+                val entry = matrices.peek()
+                for (entity in highlighted) {
+                    if (!entity.isAlive) continue
+                    val bb = entity.boundingBox
+                    drawBoxEdges(buf, entry,
+                        (bb.minX - cam.x).toFloat(), (bb.minY - cam.y).toFloat(), (bb.minZ - cam.z).toFloat(),
+                        (bb.maxX - cam.x).toFloat(), (bb.maxY - cam.y).toFloat(), (bb.maxZ - cam.z).toFloat(),
+                        r, g, b, alpha)
+                }
             }
+            drawAll(1.0f, FamilyRenderTypes.LINES)
+            drawAll(0.3f, FamilyRenderTypes.LINES_NO_DEPTH)
         }
 
-        drawAll(1.0f, FamilyRenderTypes.LINES)
-        drawAll(0.3f, FamilyRenderTypes.LINES_NO_DEPTH)
+        // ── Tracer lines ──────────────────────────────────────────────
+        // Start offset 0.5 blocks forward from camera to avoid near-plane clipping.
+        // That point is directly in front of the camera → projects to crosshair.
+        // Uses LINES_NO_DEPTH so the tracer always draws on top of world geometry.
+        if (config.tracerEnabled) {
+            val count = config.tracerCount.toInt().coerceIn(1, 20)
+            val maxBlocks = config.tracerChunkRange.toDouble() * 16.0
+            val maxDistSq = maxBlocks * maxBlocks
+
+            val targets = highlighted
+                .filter { entity ->
+                    if (!entity.isAlive) return@filter false
+                    val dx = entity.x - cam.x
+                    val dy = (entity.boundingBox.minY + entity.boundingBox.maxY) / 2.0 - cam.y
+                    val dz = entity.z - cam.z
+                    (dx * dx + dy * dy + dz * dz) <= maxDistSq
+                }
+                .sortedBy { entity ->
+                    val dx = entity.x - cam.x
+                    val dy = (entity.boundingBox.minY + entity.boundingBox.maxY) / 2.0 - cam.y
+                    val dz = entity.z - cam.z
+                    dx * dx + dy * dy + dz * dz
+                }
+                .take(count)
+
+            if (targets.isNotEmpty()) {
+                val camera = MinecraftClient.getInstance().gameRenderer.camera
+                val yawRad = Math.toRadians(camera.yaw.toDouble())
+                val pitchRad = Math.toRadians(camera.pitch.toDouble())
+                val fwdX = -Math.sin(yawRad) * Math.cos(pitchRad)
+                val fwdY = -Math.sin(pitchRad)
+                val fwdZ = Math.cos(yawRad) * Math.cos(pitchRad)
+
+                val startOffset = 0.5
+                // Start point in camera-relative coords (which is what our matrix expects)
+                val sx = (fwdX * startOffset).toFloat()
+                val sy = (fwdY * startOffset).toFloat()
+                val sz = (fwdZ * startOffset).toFloat()
+
+                val buf = consumers.getBuffer(FamilyRenderTypes.LINES_NO_DEPTH)
+                val entry = matrices.peek()
+
+                for (entity in targets) {
+                    val ex = (entity.x - cam.x).toFloat()
+                    val ey = ((entity.boundingBox.minY + entity.boundingBox.maxY) / 2.0 - cam.y).toFloat()
+                    val ez = (entity.z - cam.z).toFloat()
+
+                    val dx = ex - sx; val dy = ey - sy; val dz = ez - sz
+                    val len = Math.sqrt((dx * dx + dy * dy + dz * dz).toDouble()).toFloat()
+                    val nx = if (len > 0f) dx / len else 0f
+                    val ny = if (len > 0f) dy / len else 0f
+                    val nz = if (len > 0f) dz / len else 0f
+
+                    buf.vertex(entry, sx, sy, sz)
+                        .color(r, g, b, 1.0f)
+                        .normal(entry, nx, ny, nz)
+                        .lineWidth(2.0f)
+                    buf.vertex(entry, ex, ey, ez)
+                        .color(r, g, b, 1.0f)
+                        .normal(entry, nx, ny, nz)
+                        .lineWidth(2.0f)
+                }
+            }
+        }
     }
 
     fun hasHighlighted() = highlighted.isNotEmpty() && shouldScan()
 
     internal fun drawBoxEdges(
         buf: VertexConsumer,
-        entry: net.minecraft.client.util.math.MatrixStack.Entry,
+        entry: MatrixStack.Entry,
         x1: Float, y1: Float, z1: Float,
         x2: Float, y2: Float, z2: Float,
         r: Float, g: Float, b: Float, a: Float
