@@ -18,6 +18,13 @@ object EntityHighlight {
     val highlighted = mutableSetOf<Entity>()
     private var tick = 0
 
+    // Grace-period cache for tracer targets — prevents flicker when a mob dies and its
+    // nameplate armor stand briefly resolves to a different nearby entity, or when a mob
+    // falls out of the highlight list for a frame or two during death animation.
+    private data class TracerState(var posX: Double, var posY: Double, var posZ: Double, var lastSeenMs: Long)
+    private val tracerStates = mutableMapOf<Int, TracerState>()
+    private const val TRACER_GRACE_MS = 500L
+
     private fun shouldScan(): Boolean {
         if (FamilyConfigManager.config.highlight.enabled) return true
         val bestiary = FamilyConfigManager.config.bestiary
@@ -144,8 +151,10 @@ object EntityHighlight {
             val count = config.tracerCount.toInt().coerceIn(1, 20)
             val maxBlocks = config.tracerChunkRange.toDouble() * 16.0
             val maxDistSq = maxBlocks * maxBlocks
+            val now = System.currentTimeMillis()
 
-            val targets = highlighted
+            // Current-frame candidates: alive, in range, closest N
+            val currentCandidates = highlighted
                 .filter { entity ->
                     if (!entity.isAlive) return@filter false
                     val dx = entity.x - cam.x
@@ -161,7 +170,34 @@ object EntityHighlight {
                 }
                 .take(count)
 
-            if (targets.isNotEmpty()) {
+            // Refresh cached state for current candidates
+            for (entity in currentCandidates) {
+                val midY = (entity.boundingBox.minY + entity.boundingBox.maxY) / 2.0
+                val existing = tracerStates[entity.id]
+                if (existing != null) {
+                    existing.posX = entity.x
+                    existing.posY = midY
+                    existing.posZ = entity.z
+                    existing.lastSeenMs = now
+                } else {
+                    tracerStates[entity.id] = TracerState(entity.x, midY, entity.z, now)
+                }
+            }
+
+            // Expire stale states
+            tracerStates.entries.removeIf { (_, s) -> now - s.lastSeenMs > TRACER_GRACE_MS }
+
+            // Cap cache size so it can't grow unbounded when many mobs cycle through range
+            if (tracerStates.size > count * 3) {
+                val keepIds = tracerStates.entries
+                    .sortedByDescending { it.value.lastSeenMs }
+                    .take(count * 3)
+                    .map { it.key }
+                    .toSet()
+                tracerStates.keys.retainAll(keepIds)
+            }
+
+            if (tracerStates.isNotEmpty()) {
                 val camera = MinecraftClient.getInstance().gameRenderer.camera
                 val yawRad = Math.toRadians(camera.yaw.toDouble())
                 val pitchRad = Math.toRadians(camera.pitch.toDouble())
@@ -170,7 +206,6 @@ object EntityHighlight {
                 val fwdZ = Math.cos(yawRad) * Math.cos(pitchRad)
 
                 val startOffset = 0.5
-                // Start point in camera-relative coords (which is what our matrix expects)
                 val sx = (fwdX * startOffset).toFloat()
                 val sy = (fwdY * startOffset).toFloat()
                 val sz = (fwdZ * startOffset).toFloat()
@@ -178,10 +213,15 @@ object EntityHighlight {
                 val buf = consumers.getBuffer(FamilyRenderTypes.LINES_NO_DEPTH)
                 val entry = matrices.peek()
 
-                for (entity in targets) {
-                    val ex = (entity.x - cam.x).toFloat()
-                    val ey = ((entity.boundingBox.minY + entity.boundingBox.maxY) / 2.0 - cam.y).toFloat()
-                    val ez = (entity.z - cam.z).toFloat()
+                for (state in tracerStates.values) {
+                    // Fade alpha out over the grace period for a smooth transition
+                    val age = now - state.lastSeenMs
+                    val alpha = if (age <= 0L) 1.0f
+                    else (1.0f - age.toFloat() / TRACER_GRACE_MS.toFloat()).coerceIn(0.0f, 1.0f)
+
+                    val ex = (state.posX - cam.x).toFloat()
+                    val ey = (state.posY - cam.y).toFloat()
+                    val ez = (state.posZ - cam.z).toFloat()
 
                     val dx = ex - sx; val dy = ey - sy; val dz = ez - sz
                     val len = Math.sqrt((dx * dx + dy * dy + dz * dz).toDouble()).toFloat()
@@ -190,11 +230,11 @@ object EntityHighlight {
                     val nz = if (len > 0f) dz / len else 0f
 
                     buf.vertex(entry, sx, sy, sz)
-                        .color(r, g, b, 1.0f)
+                        .color(r, g, b, alpha)
                         .normal(entry, nx, ny, nz)
                         .lineWidth(2.0f)
                     buf.vertex(entry, ex, ey, ez)
-                        .color(r, g, b, 1.0f)
+                        .color(r, g, b, alpha)
                         .normal(entry, nx, ny, nz)
                         .lineWidth(2.0f)
                 }
