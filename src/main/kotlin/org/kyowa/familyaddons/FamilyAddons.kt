@@ -41,6 +41,7 @@ object FamilyAddons : ClientModInitializer {
         SignMath.register()
         ItemPrices.register()
         GfsKeybinds.register()
+        GorillaTactics.register()
 
         // Party
         PartyTracker.register()
